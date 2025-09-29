@@ -64,7 +64,7 @@
             
             /* Mobile drag improvements */
             .card {
-                touch-action: pan-y;
+                touch-action: auto;
                 user-select: none;
             }
             
@@ -194,10 +194,10 @@
         /* Touch-friendly drag handles */
         @media (max-width: 768px) {
             .card {
-                touch-action: none;
+                touch-action: auto;
             }
             [data-task-id] {
-                touch-action: none;
+                touch-action: auto;
             }
         }
         
