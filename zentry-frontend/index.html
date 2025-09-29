@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zentry - Task Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <style>
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+        .glass { backdrop-filter: blur(10px); background: rgba(255, 255, 255, 0.1); }
+        .card { 
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+            transform: scale(0.95);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        .card:hover { 
+            transform: scale(1.0) translateY(-4px); 
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+        }
+        .card-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .tasks-section {
+            flex: 1;
+            min-height: 120px;
+        }
+        
+        /* Task ordering - completed tasks go to bottom */
+        .tasks-section > div {
+            display: flex;
+            flex-direction: column;
+        }
+        .floating-btn {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 40;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .floating-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 20px 25px -5px rgba(59, 130, 246, 0.4);
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        @media (max-width: 640px) {
+            .floating-btn {
+                bottom: 16px;
+                right: 16px;
+            }
+        }
+        
+        /* Drag & Drop Styles */
+        .card[draggable="true"] {
+            cursor: grab;
+        }
+        .card[draggable="true"]:active {
+            cursor: grabbing;
+        }
+        .card.drag-over {
+            border-top: 3px solid #3B82F6;
+            transform: scale(1.02);
+        }
+        .task-item[draggable="true"] {
+            cursor: grab;
+        }
+        .task-item[draggable="true"]:active {
+            cursor: grabbing;
+        }
+        .drop-zone-active {
+            background-color: #EFF6FF !important;
+            border: 2px dashed #3B82F6;
+            border-radius: 8px;
+        }
+        
+        /* Mobile drag & drop styles */
+        body.is-dragging {
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        
+        .card.drag-over {
+            border-top: 3px solid #3B82F6;
+            transform: scale(1.02);
+        }
+        
+        /* Disable text selection during drag */
+        .card[draggable="true"], 
+        [data-task-id][draggable="true"] {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        
+        /* Touch-friendly drag handles */
+        @media (max-width: 768px) {
+            .card {
+                touch-action: none;
+            }
+            [data-task-id] {
+                touch-action: none;
+            }
+        }
+        
+        /* Habits table styles */
+        .habits-table {
+            table-layout: fixed;
+            width: 100%;
+            min-width: 600px;
+        }
+        
+        .habit-cell {
+            width: 200px;
+            min-width: 200px;
+            max-width: 200px;
+        }
+        
+        .day-cell {
+            width: 80px;
+            min-width: 80px;
+            max-width: 80px;
+        }
+        
+    
+    /* Habit drag & drop styles */
+    .habit-row[draggable="true"] {
+        cursor: grab;
+    }
+    
+    .habit-row[draggable="true"]:active {
+        cursor: grabbing;
+    }
+    
+    .habit-row.drag-over {
+        border-top: 3px solid #10B981;
+        background-color: #F0FDF4;
+    }
+    
+    .habit-row:hover {
+        background-color: #F9FAFB;
+    }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 via-white to-purple-50 min-h-screen">
+    <!-- Header -->
+    <header class="glass border-b border-white/20 sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                        <i data-lucide="check-square" class="w-5 h-5 text-white"></i>
+                    </div>
+                    <h1 class="text-2xl font-bold text-gray-800">Zentry</h1>
+                </div>
+                
+                <!-- Navigation -->
+                <nav class="flex space-x-1 bg-gray-100 rounded-lg p-1">
+                    <button id="tasksTab" class="px-4 py-2 rounded-md text-sm font-medium transition-all bg-white text-gray-900 shadow-sm">
+                        <i data-lucide="check-square" class="w-4 h-4 inline mr-2"></i>
+                        Görevler
+                    </button>
+                    <button id="habitsTab" class="px-4 py-2 rounded-md text-sm font-medium transition-all text-gray-600 hover:text-gray-900">
+                        <i data-lucide="target" class="w-4 h-4 inline mr-2"></i>
+                        Alışkanlıklar
+                    </button>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Floating Action Button -->
+    <button id="addCategoryBtn" class="floating-btn w-14 h-14 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-full shadow-xl flex items-center justify-center">
+        <i data-lucide="plus" class="w-6 h-6"></i>
+    </button>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-8 pb-24">
+        <!-- Tasks Page -->
+        <div id="tasksPage">
+            <!-- Categories Grid -->
+            <div id="categoriesGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-7">
+                <!-- Categories will be loaded here -->
+            </div>
+        </div>
+        
+        <!-- Habits Page -->
+        <div id="habitsPage" class="hidden">
+            <!-- Week Navigation -->
+            <div class="flex items-center justify-between mb-6">
+                <button id="prevWeek" class="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-all">
+                    <i data-lucide="chevron-left" class="w-5 h-5"></i>
+                </button>
+                
+                <div class="text-center">
+                    <h2 id="weekTitle" class="text-xl font-semibold text-gray-800">Bu Hafta</h2>
+                    <p id="weekRange" class="text-sm text-gray-500">28 Eylül - 4 Ekim 2024</p>
+                </div>
+                
+                <button id="nextWeek" class="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-all">
+                    <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <!-- Add Habit Button -->
+            <div class="mb-6">
+                <button id="addHabitBtn" class="px-4 py-2 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-lg hover:shadow-lg transition-all flex items-center space-x-2">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    <span>Alışkanlık Ekle</span>
+                </button>
+            </div>
+            
+            <!-- Habits Table -->
+            <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <div id="habitsTable" class="overflow-x-auto">
+                    <!-- Habits table will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="text-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+            <p class="text-gray-600 mt-4">Yükleniyor...</p>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="text-center py-12 hidden">
+            <div class="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i data-lucide="folder-plus" class="w-12 h-12 text-gray-400"></i>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-700 mb-2">Henüz kategori yok</h3>
+            <p class="text-gray-500 mb-6">İlk kategorinizi oluşturun ve görevlerinizi organize etmeye başlayın</p>
+            <button id="addFirstCategoryBtn" class="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-lg hover:shadow-lg transition-all">
+                İlk Kategorinizi Ekleyin
+            </button>
+        </div>
+    </main>
+
+    <!-- Category Modal -->
+    <div id="categoryModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 id="modalTitle" class="text-xl font-semibold text-gray-800">Yeni Kategori</h2>
+                    <button id="closeModal" class="text-gray-400 hover:text-gray-600">
+                        <i data-lucide="x" class="w-6 h-6"></i>
+                    </button>
+                </div>
+                
+                <form id="categoryForm">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Kategori Adı</label>
+                            <input type="text" id="categoryName" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Kategori adını girin" required>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Açıklama</label>
+                            <textarea id="categoryDescription" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" rows="3" placeholder="Açıklama (opsiyonel)"></textarea>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Renk</label>
+                                <input type="color" id="categoryColor" class="w-full h-10 border border-gray-300 rounded-lg" value="#3B82F6">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">İkon</label>
+                                <select id="categoryIcon" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                    <option value="folder">📁 Klasör</option>
+                                    <option value="star">⭐ Yıldız</option>
+                                    <option value="heart">❤️ Kalp</option>
+                                    <option value="check">✅ Tik</option>
+                                    <option value="flag">🚩 Bayrak</option>
+                                    <option value="target">🎯 Hedef</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex space-x-3 mt-6">
+                        <button type="button" id="cancelBtn" class="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                            İptal
+                        </button>
+                        <button type="submit" class="flex-1 px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all">
+                            Kaydet
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Modal -->
+    <div id="taskModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h2 id="taskModalTitle" class="text-xl font-semibold text-gray-800">Yeni Görev</h2>
+                        <p id="taskModalCategory" class="text-sm text-gray-500 mt-1"></p>
+                    </div>
+                    <button id="closeTaskModal" class="text-gray-400 hover:text-gray-600">
+                        <i data-lucide="x" class="w-6 h-6"></i>
+                    </button>
+                </div>
+                
+                <form id="taskForm">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Görev Adı</label>
+                            <input type="text" id="taskTitle" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Görev adını girin" required>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Açıklama</label>
+                            <textarea id="taskDescription" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" rows="3" placeholder="Açıklama (opsiyonel)"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="flex space-x-3 mt-6">
+                        <button type="button" id="cancelTaskBtn" class="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                            İptal
+                        </button>
+                        <button type="submit" class="flex-1 px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all">
+                            Kaydet
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Habit Modal -->
+    <div id="habitModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-xl font-semibold text-gray-800">Yeni Alışkanlık</h3>
+                <button onclick="closeHabitModal()" class="text-gray-400 hover:text-gray-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <form id="habitForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Alışkanlık Adı</label>
+                    <input type="text" id="habitName" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Örn: Su İçmek" required>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Açıklama</label>
+                    <textarea id="habitDescription" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" rows="2" placeholder="Alışkanlık hakkında açıklama..."></textarea>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Takip Şekli</label>
+                    <select id="habitType" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" onchange="toggleHabitTypeFields()">
+                        <option value="0">✅ Sadece yapıldı/yapılmadı</option>
+                        <option value="1">🔢 Miktar ile takip</option>
+                    </select>
+                </div>
+                
+                <div id="numericFields" class="space-y-4 hidden">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Hedef Değer</label>
+                        <input type="number" id="habitTargetValue" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" min="1" placeholder="Örn: 8">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Birim</label>
+                        <input type="text" id="habitUnit" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Örn: bardak, sayfa, km">
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Renk</label>
+                    <div class="flex space-x-2">
+                        <button type="button" class="w-8 h-8 rounded-full bg-blue-500 border-2 border-transparent hover:border-gray-300" data-color="#3B82F6"></button>
+                        <button type="button" class="w-8 h-8 rounded-full bg-red-500 border-2 border-transparent hover:border-gray-300" data-color="#EF4444"></button>
+                        <button type="button" class="w-8 h-8 rounded-full bg-green-500 border-2 border-transparent hover:border-gray-300" data-color="#10B981"></button>
+                        <button type="button" class="w-8 h-8 rounded-full bg-purple-500 border-2 border-transparent hover:border-gray-300" data-color="#8B5CF6"></button>
+                        <button type="button" class="w-8 h-8 rounded-full bg-yellow-500 border-2 border-transparent hover:border-gray-300" data-color="#F59E0B"></button>
+                        <button type="button" class="w-8 h-8 rounded-full bg-pink-500 border-2 border-transparent hover:border-gray-300" data-color="#EC4899"></button>
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">İkon</label>
+                    <div class="grid grid-cols-8 gap-2 p-3 border border-gray-300 rounded-lg bg-gray-50 max-h-32 overflow-y-auto">
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('droplets')">💧</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('activity')">🏃</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('book')">📚</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('brain')">🧠</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('moon')">🌙</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('coffee')">☕</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('heart')">❤️</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('star')">⭐</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('target')">🎯</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('check')">✅</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('flag')">🚩</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('folder')">📁</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('sun')">☀️</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('music')">🎵</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('camera')">📷</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('pen')">✏️</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('laptop')">💻</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('phone')">📱</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('car')">🚗</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('home')">🏠</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('shopping')">🛒</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('money')">💰</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('time')">⏰</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('study')">📖</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('work')">💼</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('family')">👨‍👩‍👧‍👦</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('friends')">👥</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('travel')">✈️</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('food')">🍎</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('drink')">🥤</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('smile')">😊</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('fire')">🔥</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('lightning')">⚡</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('shield')">🛡️</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('key')">🔑</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('gift')">🎁</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('party')">🎉</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('game')">🎮</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('tv')">📺</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('art')">🎨</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('dance')">💃</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('guitar')">🎸</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('piano')">🎹</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('violin')">🎻</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('drum')">🥁</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('microphone')">🎤</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('headphones')">🎧</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('computer')">🖥️</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('tablet')">📱</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('watch')">⌚</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('glasses')">👓</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('shirt')">👕</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('shoes')">👟</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('bag')">🎒</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('wallet')">👛</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('house')">🏡</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('building')">🏢</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('school')">🏫</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('hospital')">🏥</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('bank')">🏦</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('store')">🏪</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('restaurant')">🍽️</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('hotel')">🏨</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('airport')">✈️</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('train')">🚂</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('bus')">🚌</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('bike')">🚲</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('motorcycle')">🏍️</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('boat')">🚤</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('ship')">🚢</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('rocket')">🚀</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('telescope')">🔭</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('thermometer')">🌡️</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('umbrella')">☂️</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('snowflake')">❄️</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('rain')">🌧️</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('cloud')">☁️</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('rainbow')">🌈</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('tree')">🌳</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('flower')">🌸</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('leaf')">🍃</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('seed')">🌱</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('cactus')">🌵</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('palm')">🌴</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('herb')">🌿</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('mushroom')">🍄</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('banana')">🍌</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('orange')">🍊</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('grape')">🍇</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('strawberry')">🍓</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('watermelon')">🍉</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('pineapple')">🍍</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('peach')">🍑</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('cherry')">🍒</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('lemon')">🍋</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('kiwi')">🥝</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('coconut')">🥥</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('avocado')">🥑</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('tomato')">🍅</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('carrot')">🥕</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('corn')">🌽</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('pepper')">🌶️</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('cucumber')">🥒</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('broccoli')">🥦</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('lettuce')">🥬</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('potato')">🥔</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('onion')">🧅</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('garlic')">🧄</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('bread')">🍞</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('croissant')">🥐</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('baguette')">🥖</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('pretzel')">🥨</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('pancake')">🥞</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('waffle')">🧇</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('cheese')">🧀</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('meat')">🥩</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('chicken')">🍗</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('fish')">🐟</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('shrimp')">🦐</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('crab')">🦀</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('lobster')">🦞</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('squid')">🦑</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('oyster')">🦪</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('egg')">🥚</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('milk')">🥛</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('butter')">🧈</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('yogurt')">🥣</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('honey')">🍯</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('salt')">🧂</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('sugar')">🍬</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('chocolate')">🍫</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('candy')">🍭</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('cookie')">🍪</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('cake')">🎂</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('pie')">🥧</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('donut')">🍩</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('icecream')">🍦</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('popsicle')">🍧</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('sundae')">🍨</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('popcorn')">🍿</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('nuts')">🥜</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('chestnut')">🌰</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('olive')">🫒</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('mango')">🥭</button>
+                        <button type="button" class="w-8 h-8 text-lg hover:bg-white rounded transition-colors" onclick="selectHabitIcon('dragon')">🐉</button>
+                    </div>
+                    <input type="hidden" id="habitIcon" value="droplets">
+                </div>
+                
+                <div class="flex space-x-3 pt-4">
+                    <button type="button" onclick="closeHabitModal()" class="flex-1 px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                        İptal
+                    </button>
+                    <button type="submit" id="habitSubmitButton" class="flex-1 px-4 py-2 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-lg hover:shadow-lg transition-all">
+                        Ekle
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+    </script>
+</body>
+</html>
