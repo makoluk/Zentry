@@ -69,12 +69,19 @@ builder.Services.AddScoped<ValidationExceptionFilter>();
 // Add repositories
 builder.Services.AddScoped<IAppDbContext>(provider => provider.GetRequiredService<ZentryDbContext>());
 
-// Add CORS for development
+// Add CORS for development and production
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Development", policy =>
     {
         policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+    
+    options.AddPolicy("Production", policy =>
+    {
+        policy.WithOrigins("https://zentry-gules-nu.vercel.app")
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
@@ -88,6 +95,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
     app.UseCors("Development");
+}
+else
+{
+    app.UseCors("Production");
 }
 
 // Add custom middleware
