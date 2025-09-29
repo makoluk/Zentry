@@ -278,17 +278,17 @@
     </button>
 
     <!-- Main Content -->
-    <main class="container mx-auto px-4 py-8 pb-24">
+    <main class="container mx-auto px-4 py-8 pb-24 min-h-screen">
         <!-- Tasks Page -->
-        <div id="tasksPage">
+        <div id="tasksPage" class="min-h-full">
             <!-- Categories Grid -->
-            <div id="categoriesGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-7">
+            <div id="categoriesGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-7 min-h-full">
                 <!-- Categories will be loaded here -->
             </div>
         </div>
         
         <!-- Habits Page -->
-        <div id="habitsPage" class="hidden">
+        <div id="habitsPage" class="hidden min-h-full">
             <!-- Week Navigation -->
             <div class="flex items-center justify-between mb-6">
                 <button id="prevWeek" class="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-all">
