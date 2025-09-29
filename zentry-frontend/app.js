@@ -1,5 +1,5 @@
 // API Configuration - Use Railway backend
-const API_BASE_URL = 'https://zentry-production.up.railway.app/api/v1';
+const API_BASE_URL = 'http://localhost:5012/api/v1';
 
 // Global state
 let categories = [];
@@ -59,14 +59,23 @@ const showCategories = () => {
 const showModal = (modal) => {
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
 };
 
 const hideModal = (modal) => {
     modal.classList.add('hidden');
     document.body.style.overflow = '';
+    document.body.style.position = '';
+    document.body.style.width = '';
 };
 
 const showToast = (message, type = 'success') => {
+    // Don't show toast on mobile
+    if (window.innerWidth <= 768) {
+        return;
+    }
+    
     const toast = document.createElement('div');
     toast.className = `fixed top-4 right-4 px-6 py-3 rounded-lg text-white z-50 transition-all transform translate-x-full ${
         type === 'success' ? 'bg-green-500' : 'bg-red-500'
@@ -315,25 +324,35 @@ const renderCategories = () => {
     }
 
     showCategories();
+    const isMobile = window.innerWidth <= 768;
     categoriesGrid.innerHTML = categories.map(category => {
         const colorClass = getCategoryColorClass(category.color);
         const badgeColor = getBadgeColor(category.taskCount || 0, category.overdueCount || 0);
         
         return `
         <div class="card bg-white rounded-2xl shadow-lg overflow-hidden" 
-             draggable="true" 
              data-category-id="${category.id}"
-             ondragstart="handleCategoryDragStart(event)"
-             ondragover="handleCategoryDragOver(event)"
-             ondrop="handleCategoryDrop(event)"
-             ondragend="handleCategoryDragEnd(event)"
-             ontouchstart="handleTouchStart(event, 'category')"
-             ontouchmove="handleTouchMove(event)"
-             ontouchend="handleTouchEnd(event)">
+             ${!isMobile ? 'draggable="true" ondragstart="handleCategoryDragStart(event)" ondragover="handleCategoryDragOver(event)" ondrop="handleCategoryDrop(event)" ondragend="handleCategoryDragEnd(event)"' : ''}>
             <div class="card-content p-5 md:p-6">
                 <!-- Header -->
                 <div class="flex items-center justify-between mb-4">
                     <div class="flex items-center space-x-3">
+                        ${isMobile ? `
+                        <div class="flex flex-col space-y-1">
+                            <button onclick="moveCategoryUp('${category.id}')" 
+                                    class="w-6 h-6 rounded flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors" 
+                                    title="Yukarı taşı"
+                                    ${categories.indexOf(category) === 0 ? 'disabled' : ''}>
+                                <i data-lucide="chevron-up" class="w-3 h-3"></i>
+                            </button>
+                            <button onclick="moveCategoryDown('${category.id}')" 
+                                    class="w-6 h-6 rounded flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors" 
+                                    title="Aşağı taşı"
+                                    ${categories.indexOf(category) === categories.length - 1 ? 'disabled' : ''}>
+                                <i data-lucide="chevron-down" class="w-3 h-3"></i>
+                            </button>
+                        </div>
+                        ` : ''}
                         <div class="w-10 h-10 rounded-xl flex items-center justify-center text-2xl ${colorClass}">
                             ${getIconEmoji(category.icon)}
                         </div>
@@ -370,9 +389,7 @@ const renderCategories = () => {
                 
                 <!-- Tasks Section -->
                 <div class="tasks-section mb-4">
-                    <div class="space-y-2" id="tasks-${category.id}"
-                         ondragover="handleTaskDragOver(event)"
-                         ondrop="handleTaskDrop(event)">
+                    <div class="space-y-2" id="tasks-${category.id}">
                         <div class="text-center py-8 text-gray-400">
                             <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-300 mx-auto"></div>
                             <p class="text-xs mt-2">Görevler yükleniyor...</p>
@@ -425,15 +442,9 @@ const renderTasks = (categoryId, tasks) => {
         return;
     }
 
-    tasksContainer.innerHTML = tasks.map(task => `
+    tasksContainer.innerHTML = tasks.map((task, index) => `
         <div class="flex items-center space-x-3 p-3 rounded-xl hover:bg-gray-50 group transition-all border border-transparent hover:border-gray-200 ${task.isDone ? 'opacity-60 hover:opacity-80 order-last' : ''}"
-             draggable="true"
-             data-task-id="${task.id}"
-             ondragstart="handleTaskDragStart(event)"
-             ondragend="handleTaskDragEnd(event)"
-             ontouchstart="handleTouchStart(event, 'task')"
-             ontouchmove="handleTouchMove(event)"
-             ontouchend="handleTouchEnd(event)">
+             data-task-id="${task.id}">
             <button onclick="toggleTaskStatus('${task.id}')" 
                     class="flex-shrink-0 focus:ring-2 focus:ring-offset-2 focus:ring-indigo-300 rounded-full">
                 <div class="w-5 h-5 rounded-full border-2 ${task.isDone ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300 hover:border-green-400'} flex items-center justify-center transition-all">
@@ -524,6 +535,83 @@ const addTask = (categoryId) => {
     document.getElementById('addTaskBtn').style.display = 'flex';
     
     showModal(taskModal);
+};
+
+const openTaskModal = () => {
+    if (!currentCategoryId) {
+        showToast('Önce bir kategori seçin', 'error');
+        return;
+    }
+    
+    currentTaskId = null;
+    isEditMode = false;
+    
+    // Find category name to display
+    const category = categories.find(c => c.id === currentCategoryId);
+    const categoryName = category ? category.name : 'Bilinmeyen Kategori';
+    
+    document.getElementById('taskModalTitle').textContent = 'Yeni Görev';
+    document.getElementById('taskModalCategory').textContent = `Kategori: ${categoryName}`;
+    document.getElementById('taskTitle').value = '';
+    document.getElementById('taskDescription').value = '';
+    
+    showModal(taskModal);
+};
+
+const showCategorySelectionModal = () => {
+    if (categories.length === 0) {
+        showToast('Önce bir kategori oluşturun', 'error');
+        return;
+    }
+    
+    // Create category selection modal
+    const modal = document.createElement('div');
+    modal.id = 'categorySelectionModal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl p-4 m-2 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">Kategori Seçin</h3>
+            <div class="space-y-2">
+                ${categories.map(category => `
+                    <button onclick="selectCategoryForTask('${category.id}')" 
+                            class="w-full p-3 text-left rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-6 h-6 rounded-lg flex items-center justify-center text-sm ${getCategoryColorClass(category.color)}">
+                                ${getIconEmoji(category.icon)}
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <p class="font-medium text-gray-800 text-sm truncate">${category.name}</p>
+                                ${category.description ? `<p class="text-xs text-gray-500 truncate">${category.description}</p>` : ''}
+                            </div>
+                        </div>
+                    </button>
+                `).join('')}
+            </div>
+            <div class="flex justify-end mt-4">
+                <button onclick="closeCategorySelectionModal()" 
+                        class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors text-sm">
+                    İptal
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    document.body.style.overflow = 'hidden';
+};
+
+const selectCategoryForTask = (categoryId) => {
+    currentCategoryId = categoryId;
+    closeCategorySelectionModal();
+    openTaskModal();
+};
+
+const closeCategorySelectionModal = () => {
+    const modal = document.getElementById('categorySelectionModal');
+    if (modal) {
+        modal.remove();
+        document.body.style.overflow = '';
+    }
 };
 
 const editTask = async (taskId, categoryId) => {
@@ -643,7 +731,14 @@ taskForm.addEventListener('submit', async (e) => {
 
 // Event Listeners
 document.getElementById('addCategoryBtn').addEventListener('click', () => openCategoryModal());
-document.getElementById('addTaskBtn').addEventListener('click', () => openTaskModal());
+document.getElementById('addTaskBtn').addEventListener('click', () => {
+    // On mobile, show category selection first
+    if (window.innerWidth <= 768) {
+        showCategorySelectionModal();
+    } else {
+        openTaskModal();
+    }
+});
 document.getElementById('addFirstCategoryBtn').addEventListener('click', () => openCategoryModal());
 document.getElementById('closeModal').addEventListener('click', () => hideModal(categoryModal));
 document.getElementById('cancelBtn').addEventListener('click', () => hideModal(categoryModal));
@@ -765,7 +860,135 @@ const handleTaskDragEnd = (e) => {
     });
 };
 
-// Helper functions for drag & drop operations
+// Helper functions for reordering operations
+const moveCategoryUp = async (categoryId) => {
+    const currentIndex = categories.findIndex(c => c.id === categoryId);
+    if (currentIndex <= 0) return;
+    
+    const newCategories = [...categories];
+    [newCategories[currentIndex], newCategories[currentIndex - 1]] = [newCategories[currentIndex - 1], newCategories[currentIndex]];
+    
+    await updateCategoryOrder(newCategories);
+};
+
+const moveCategoryDown = async (categoryId) => {
+    const currentIndex = categories.findIndex(c => c.id === categoryId);
+    if (currentIndex >= categories.length - 1) return;
+    
+    const newCategories = [...categories];
+    [newCategories[currentIndex], newCategories[currentIndex + 1]] = [newCategories[currentIndex + 1], newCategories[currentIndex]];
+    
+    await updateCategoryOrder(newCategories);
+};
+
+const moveTaskUp = async (taskId, categoryId) => {
+    const categoryTasks = tasks.filter(t => t.categoryId === categoryId);
+    const currentIndex = categoryTasks.findIndex(t => t.id === taskId);
+    if (currentIndex <= 0) return;
+    
+    const newTasks = [...tasks];
+    const taskIndex = newTasks.findIndex(t => t.id === taskId);
+    const prevTaskIndex = newTasks.findIndex(t => t.id === categoryTasks[currentIndex - 1].id);
+    
+    [newTasks[taskIndex], newTasks[prevTaskIndex]] = [newTasks[prevTaskIndex], newTasks[taskIndex]];
+    
+    await updateTaskOrder(newTasks, categoryId);
+};
+
+const moveTaskDown = async (taskId, categoryId) => {
+    const categoryTasks = tasks.filter(t => t.categoryId === categoryId);
+    const currentIndex = categoryTasks.findIndex(t => t.id === taskId);
+    if (currentIndex >= categoryTasks.length - 1) return;
+    
+    const newTasks = [...tasks];
+    const taskIndex = newTasks.findIndex(t => t.id === taskId);
+    const nextTaskIndex = newTasks.findIndex(t => t.id === categoryTasks[currentIndex + 1].id);
+    
+    [newTasks[taskIndex], newTasks[nextTaskIndex]] = [newTasks[nextTaskIndex], newTasks[taskIndex]];
+    
+    await updateTaskOrder(newTasks, categoryId);
+};
+
+const moveHabitUp = async (habitId) => {
+    const currentIndex = habits.findIndex(h => h.id === habitId);
+    if (currentIndex <= 0) return;
+    
+    const newHabits = [...habits];
+    [newHabits[currentIndex], newHabits[currentIndex - 1]] = [newHabits[currentIndex - 1], newHabits[currentIndex]];
+    
+    await updateHabitOrder(newHabits);
+};
+
+const moveHabitDown = async (habitId) => {
+    const currentIndex = habits.findIndex(h => h.id === habitId);
+    if (currentIndex >= habits.length - 1) return;
+    
+    const newHabits = [...habits];
+    [newHabits[currentIndex], newHabits[currentIndex + 1]] = [newHabits[currentIndex + 1], newHabits[currentIndex]];
+    
+    await updateHabitOrder(newHabits);
+};
+
+const updateCategoryOrder = async (newCategories) => {
+    // Update sort orders
+    const reorderData = newCategories.map((category, index) => ({
+        id: category.id,
+        sortOrder: index + 1
+    }));
+
+    await apiCall('/Categories/reorder', {
+        method: 'PUT',
+        body: JSON.stringify({ categories: reorderData })
+    });
+    
+    // Update local state
+    categories = newCategories;
+    renderCategories();
+    showToast('Kategoriler yeniden sıralandı', 'success');
+};
+
+const updateTaskOrder = async (newTasks, categoryId) => {
+    // Update sort orders for tasks in this category
+    const categoryTasks = newTasks.filter(t => t.categoryId === categoryId);
+    const reorderData = categoryTasks.map((task, index) => ({
+        id: task.id,
+        sortOrder: index + 1
+    }));
+
+    await apiCall('/Tasks/reorder', {
+        method: 'PUT',
+        body: JSON.stringify({ tasks: reorderData })
+    });
+    
+    // Update local state
+    tasks = newTasks;
+    renderTasks(categoryId);
+    showToast('Görevler yeniden sıralandı', 'success');
+};
+
+const updateHabitOrder = async (newHabits) => {
+    // Update sort orders
+    const reorderData = newHabits.map((habit, index) => ({
+        id: habit.id,
+        sortOrder: index + 1
+    }));
+    
+    try {
+        // Send update to API
+        await apiCall('/Habits/reorder', {
+            method: 'PUT',
+            body: JSON.stringify({ habits: reorderData })
+        });
+        
+        // Update local state
+        habits = newHabits;
+        renderHabitsTable();
+        showToast('Sıralama güncellendi', 'success');
+    } catch (error) {
+        showToast('Sıralama güncellenemedi', 'error');
+    }
+};
+
 const reorderHabits = async (draggedId, targetId) => {
     const draggedIndex = habits.findIndex(h => h.id === draggedId);
     const targetIndex = habits.findIndex(h => h.id === targetId);
@@ -777,21 +1000,7 @@ const reorderHabits = async (draggedId, targetId) => {
     const [draggedHabit] = newHabits.splice(draggedIndex, 1);
     newHabits.splice(targetIndex, 0, draggedHabit);
     
-    // Update sort orders
-    const reorderData = newHabits.map((habit, index) => ({
-        id: habit.id,
-        sortOrder: index + 1
-    }));
-    
-    // Send update to API
-    await apiCall('/Habits/reorder', {
-        method: 'PUT',
-        body: JSON.stringify({ habits: reorderData })
-    });
-    
-    // Update local state
-    habits = newHabits;
-    renderHabits();
+    await updateHabitOrder(newHabits);
 };
 
 const reorderCategories = async (draggedId, targetId) => {
@@ -850,9 +1059,15 @@ const showTasksPage = () => {
     tasksTab.className = 'px-4 py-2 rounded-md text-sm font-medium transition-all bg-white text-gray-900 shadow-sm';
     habitsTab.className = 'px-4 py-2 rounded-md text-sm font-medium transition-all text-gray-600 hover:text-gray-900';
     
-    // Update FAB
-    document.getElementById('addCategoryBtn').style.display = 'flex';
-    document.getElementById('addTaskBtn').style.display = 'none';
+    // Update FAB - Show task add button on mobile
+    const isMobile = window.innerWidth <= 768 || /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (isMobile) {
+        document.getElementById('addCategoryBtn').style.display = 'none';
+        document.getElementById('addTaskBtn').style.display = 'flex';
+    } else {
+        document.getElementById('addCategoryBtn').style.display = 'flex';
+        document.getElementById('addTaskBtn').style.display = 'none';
+    }
 };
 
 const showHabitsPage = () => {
@@ -905,6 +1120,8 @@ const loadHabits = async () => {
             return;
         }
 
+        const isMobile = window.innerWidth <= 768;
+
         // Generate week days
         const weekStart = getWeekStart(currentWeekStart);
         const weekDays = Array.from({ length: 7 }, (_, i) => {
@@ -938,20 +1155,10 @@ const loadHabits = async () => {
                             const habitIcon = getHabitIcon(habit.name, habit.icon);
                             return `
                                 <tr class="hover:bg-gray-50 habit-row ${getHabitRowColorClass(habit.color)} ${index < habits.length - 1 ? 'border-b border-gray-200' : ''}" 
-                                    data-habit-id="${habit.id}" 
-                                    draggable="true" 
-                                    ondragstart="handleHabitDragStart(event, '${habit.id}')" 
-                                    ondragover="handleHabitDragOver(event)" 
-                                    ondrop="handleHabitDrop(event, '${habit.id}')" 
-                                    ondragend="handleHabitDragEnd(event)"
-                                    ontouchstart="handleTouchStart(event, 'habit')"
-                                    ontouchmove="handleTouchMove(event)"
-                                    ontouchend="handleTouchEnd(event)">
+                                    data-habit-id="${habit.id}"
+                                    ${!isMobile ? 'draggable="true" ondragstart="handleHabitDragStart(event)" ondragover="handleHabitDragOver(event)" ondrop="handleHabitDrop(event)" ondragend="handleHabitDragEnd(event)"' : ''}>
                                     <td class="habit-cell px-4 py-4">
                                         <div class="flex items-center space-x-3">
-                                            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 cursor-move hover:bg-gray-100 transition-colors" title="Sürükle">
-                                                <i data-lucide="grip-vertical" class="w-4 h-4"></i>
-                                            </div>
                                             <div class="w-10 h-10 ${getHabitColorClass(habit.color)} rounded-lg p-1 flex items-center justify-center text-xl flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity" 
                                                  onclick="editHabit('${habit.id}')" 
                                                  title="Alışkanlığı düzenle">
@@ -988,15 +1195,11 @@ const loadHabits = async () => {
                                                             ${entry?.isCompleted ? '<i data-lucide="check" class="w-4 h-4"></i>' : ''}
                                                         </button>` :
                                                         // Numeric habit
-                                                        `<div class="relative">
-                                                            <input type="number" 
-                                                                    value="${entry?.value || ''}" 
-                                                                    placeholder="–"
-                                                                    onchange="updateHabitValue('${habit.id}', '${dateStr}', this.value)"
-                                                                    class="w-16 h-8 text-center text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-300 focus:border-transparent ${(entry?.value || 0) >= (habit.targetValue || 1) ? 'bg-green-50 border-green-300' : ''}"
-                                                                    min="0" max="999">
-                                                            ${(entry?.value || 0) >= (habit.targetValue || 1) ? '<div class="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full"></div>' : ''}
-                                                        </div>`
+                                                        `<input type="number" 
+                                                                value="${entry?.value || 0}" 
+                                                                onchange="updateHabitValue('${habit.id}', '${dateStr}', this.value)"
+                                                                class="w-10 h-10 text-center flex items-center justify-center font-mono text-sm px-0 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-400 ${(entry?.value || 0) >= (habit.targetValue || 1) ? 'bg-green-100 text-green-700 border-green-400' : 'bg-gray-100'}"
+                                                                min="0" max="999">`
                                                     }
                                                 </div>
                                             </td>
@@ -1018,6 +1221,20 @@ const loadHabits = async () => {
                     return `
                         <div class="bg-white shadow-sm rounded-lg p-4 ${getHabitRowColorClass(habit.color)}">
                             <div class="flex items-center space-x-3 mb-4">
+                                <div class="flex flex-col space-y-1">
+                                    <button onclick="moveHabitUp('${habit.id}')" 
+                                            class="w-6 h-6 rounded flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors" 
+                                            title="Yukarı taşı"
+                                            ${index === 0 ? 'disabled' : ''}>
+                                        <i data-lucide="chevron-up" class="w-3 h-3"></i>
+                                    </button>
+                                    <button onclick="moveHabitDown('${habit.id}')" 
+                                            class="w-6 h-6 rounded flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors" 
+                                            title="Aşağı taşı"
+                                            ${index === habits.length - 1 ? 'disabled' : ''}>
+                                        <i data-lucide="chevron-down" class="w-3 h-3"></i>
+                                    </button>
+                                </div>
                                 <div class="w-10 h-10 ${getHabitColorClass(habit.color)} rounded-lg p-1 flex items-center justify-center text-xl cursor-pointer hover:opacity-80 transition-opacity" 
                                      onclick="editHabit('${habit.id}')" 
                                      title="Alışkanlığı düzenle">
@@ -1035,14 +1252,14 @@ const loadHabits = async () => {
                                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                                 </button>
                             </div>
-                            <div class="flex justify-between items-center">
+                            <div class="grid grid-cols-7 gap-2">
                                 ${weekDays.map((day, dayIndex) => {
                                     const dateStr = day.toISOString().split('T')[0];
                                     const entry = habit.weeklyEntries?.find(e => e.date === dateStr);
                                     const isTodayColumn = dayIndex === todayIndex;
                                     
                                     return `
-                                        <div class="flex flex-col items-center ${isTodayColumn ? 'bg-indigo-50 rounded-lg p-2' : ''}">
+                                        <div class="flex flex-col items-center ${isTodayColumn ? 'bg-indigo-50 rounded-lg' : ''}">
                                             <span class="text-xs text-gray-500 mb-1">${dayNames[dayIndex]}</span>
                                             <span class="text-sm font-semibold mb-2">${day.getDate()}</span>
                                             ${habit.type === 0 ? 
@@ -1052,10 +1269,9 @@ const loadHabits = async () => {
                                                     ${entry?.isCompleted ? '<i data-lucide="check" class="w-3 h-3"></i>' : ''}
                                                 </button>` :
                                                 `<input type="number" 
-                                                        value="${entry?.value || ''}" 
-                                                        placeholder="–"
+                                                        value="${entry?.value || 0}" 
                                                         onchange="updateHabitValue('${habit.id}', '${dateStr}', this.value)"
-                                                        class="w-12 h-6 text-center text-xs border border-gray-300 rounded focus:ring-2 focus:ring-indigo-300 ${(entry?.value || 0) >= (habit.targetValue || 1) ? 'bg-green-50 border-green-300' : ''}"
+                                                        class="w-8 h-8 text-center flex items-center justify-center font-mono text-xs px-0 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-400 ${(entry?.value || 0) >= (habit.targetValue || 1) ? 'bg-green-100 text-green-700 border-green-400' : 'bg-gray-100'}"
                                                         min="0" max="999">`
                                             }
                                         </div>
@@ -1165,11 +1381,10 @@ const updateHabitValue = async (habitId, dateStr, value) => {
 // Habit drag & drop functions
 let draggedHabitId = null;
 
-const handleHabitDragStart = (event, habitId) => {
-    draggedHabitId = habitId;
+const handleHabitDragStart = (event) => {
+    draggedHabitId = event.target.closest('.habit-row').dataset.habitId;
     event.target.style.opacity = '0.5';
     event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/html', event.target.outerHTML);
 };
 
 const handleHabitDragOver = (event) => {
@@ -1182,8 +1397,11 @@ const handleHabitDragOver = (event) => {
     }
 };
 
-const handleHabitDrop = async (event, targetHabitId) => {
+const handleHabitDrop = async (event) => {
     event.preventDefault();
+    
+    const targetRow = event.target.closest('.habit-row');
+    const targetHabitId = targetRow.dataset.habitId;
     
     if (draggedHabitId === targetHabitId) {
         return;
@@ -1194,32 +1412,8 @@ const handleHabitDrop = async (event, targetHabitId) => {
         row.classList.remove('drag-over');
     });
     
-    // Find the dragged and target habits
-    const draggedIndex = habits.findIndex(h => h.id === draggedHabitId);
-    const targetIndex = habits.findIndex(h => h.id === targetHabitId);
-    
-    if (draggedIndex === -1 || targetIndex === -1) {
-        return;
-    }
-    
-    // Reorder habits array
-    const draggedHabit = habits.splice(draggedIndex, 1)[0];
-    habits.splice(targetIndex, 0, draggedHabit);
-    
-    // Update sort orders
-    const reorderData = habits.map((habit, index) => ({
-        id: habit.id,
-        sortOrder: index + 1
-    }));
-    
     try {
-        await apiCall('/Habits/reorder', {
-            method: 'PUT',
-            body: JSON.stringify({ habits: reorderData })
-        });
-        
-        // Re-render the table
-        renderHabitsTable();
+        await reorderHabits(draggedHabitId, targetHabitId);
         showToast('Alışkanlıklar yeniden sıralandı', 'success');
     } catch (error) {
         console.error('Reorder habits failed:', error);
@@ -1471,6 +1665,7 @@ window.handleHabitDragEnd = handleHabitDragEnd;
 
 // Touch Event Handlers for Mobile
 const handleTouchStart = (e, type) => {
+    // Only prevent default if we're actually dragging
     const touch = e.touches[0];
     touchStartPos = { x: touch.clientX, y: touch.clientY };
     touchDragType = type;
@@ -1486,8 +1681,7 @@ const handleTouchStart = (e, type) => {
         draggedHabitId = draggedElement.dataset.habitId;
     }
     
-    // Prevent default to avoid scrolling
-    e.preventDefault();
+    // Don't prevent default immediately - let clicks work
 };
 
 const handleTouchMove = (e) => {
@@ -1516,6 +1710,9 @@ const handleTouchMove = (e) => {
         
         // Add visual feedback class
         document.body.classList.add('is-dragging');
+        
+        // Now prevent default to stop scrolling
+        e.preventDefault();
     }
     
     if (isDragging) {
@@ -1652,6 +1849,20 @@ window.handleTaskDragEnd = handleTaskDragEnd;
 window.handleTouchStart = handleTouchStart;
 window.handleTouchMove = handleTouchMove;
 window.handleTouchEnd = handleTouchEnd;
+
+// Make task functions global
+window.openTaskModal = openTaskModal;
+window.showCategorySelectionModal = showCategorySelectionModal;
+window.selectCategoryForTask = selectCategoryForTask;
+window.closeCategorySelectionModal = closeCategorySelectionModal;
+
+// Make reorder functions global
+window.moveCategoryUp = moveCategoryUp;
+window.moveCategoryDown = moveCategoryDown;
+window.moveTaskUp = moveTaskUp;
+window.moveTaskDown = moveTaskDown;
+window.moveHabitUp = moveHabitUp;
+window.moveHabitDown = moveHabitDown;
 
 // Habit icon selection function
 function selectHabitIcon(iconValue) {

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Zentry.Api.Extensions;
 using Zentry.Application.DTOs;
 using Zentry.Application.Features.Habits.Commands.CreateHabit;
+using Zentry.Application.Features.Habits.Commands.DeleteHabit;
 using Zentry.Application.Features.Habits.Commands.ReorderHabits;
 using Zentry.Application.Features.Habits.Commands.UpdateHabit;
 using Zentry.Application.Features.Habits.Commands.UpdateHabitEntry;
@@ -98,6 +99,20 @@ public class HabitsController(IMediator mediator) : ControllerBase
         ArgumentNullException.ThrowIfNull(command);
         var updateCommand = command with { HabitId = habitId };
         var result = await _mediator.Send(updateCommand, cancellationToken).ConfigureAwait(false);
+
+        return this.FromResult(result);
+    }
+
+    /// <summary>
+    /// Delete a habit
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    public async Task<ActionResult> DeleteHabit(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var command = new DeleteHabitCommand { Id = id };
+        var result = await _mediator.Send(command, cancellationToken).ConfigureAwait(false);
 
         return this.FromResult(result);
     }
