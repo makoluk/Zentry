@@ -61,6 +61,50 @@
                 bottom: 16px;
                 right: 16px;
             }
+            
+            /* Mobile drag improvements */
+            .card {
+                touch-action: none;
+                user-select: none;
+            }
+            
+            .card.dragging {
+                transform: scale(1.05) rotate(2deg);
+                z-index: 1000;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            }
+            
+            .drop-zone-active {
+                background-color: #EFF6FF !important;
+                border: 2px dashed #3B82F6 !important;
+                border-radius: 12px;
+            }
+            
+            /* Task drag improvements */
+            [data-task-id] {
+                touch-action: none;
+                user-select: none;
+            }
+            
+            [data-task-id].dragging {
+                transform: scale(1.02);
+                z-index: 1000;
+                box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+                background-color: #F3F4F6;
+            }
+            
+            /* Habit drag improvements */
+            .habit-row {
+                touch-action: none;
+                user-select: none;
+            }
+            
+            .habit-row.dragging {
+                transform: scale(1.02);
+                z-index: 1000;
+                box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+                background-color: #F3F4F6;
+            }
         }
         
         /* Drag & Drop Styles */
@@ -185,6 +229,11 @@
 
     <!-- Floating Action Button -->
     <button id="addCategoryBtn" class="floating-btn w-14 h-14 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-full shadow-xl flex items-center justify-center">
+        <i data-lucide="plus" class="w-6 h-6"></i>
+    </button>
+    
+    <!-- Task Add Button (Mobile) -->
+    <button id="addTaskBtn" class="floating-btn w-14 h-14 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-full shadow-xl flex items-center justify-center hidden">
         <i data-lucide="plus" class="w-6 h-6"></i>
     </button>
 

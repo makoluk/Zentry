@@ -520,6 +520,9 @@ const addTask = (categoryId) => {
     document.getElementById('taskTitle').value = '';
     document.getElementById('taskDescription').value = '';
     
+    // Show task add button
+    document.getElementById('addTaskBtn').style.display = 'flex';
+    
     showModal(taskModal);
 };
 
@@ -640,6 +643,7 @@ taskForm.addEventListener('submit', async (e) => {
 
 // Event Listeners
 document.getElementById('addCategoryBtn').addEventListener('click', () => openCategoryModal());
+document.getElementById('addTaskBtn').addEventListener('click', () => openTaskModal());
 document.getElementById('addFirstCategoryBtn').addEventListener('click', () => openCategoryModal());
 document.getElementById('closeModal').addEventListener('click', () => hideModal(categoryModal));
 document.getElementById('cancelBtn').addEventListener('click', () => hideModal(categoryModal));
@@ -762,6 +766,34 @@ const handleTaskDragEnd = (e) => {
 };
 
 // Helper functions for drag & drop operations
+const reorderHabits = async (draggedId, targetId) => {
+    const draggedIndex = habits.findIndex(h => h.id === draggedId);
+    const targetIndex = habits.findIndex(h => h.id === targetId);
+    
+    if (draggedIndex === -1 || targetIndex === -1) return;
+    
+    // Create new order
+    const newHabits = [...habits];
+    const [draggedHabit] = newHabits.splice(draggedIndex, 1);
+    newHabits.splice(targetIndex, 0, draggedHabit);
+    
+    // Update sort orders
+    const reorderData = newHabits.map((habit, index) => ({
+        id: habit.id,
+        sortOrder: index + 1
+    }));
+    
+    // Send update to API
+    await apiCall('/Habits/reorder', {
+        method: 'PUT',
+        body: JSON.stringify({ habits: reorderData })
+    });
+    
+    // Update local state
+    habits = newHabits;
+    renderHabits();
+};
+
 const reorderCategories = async (draggedId, targetId) => {
     const draggedIndex = categories.findIndex(c => c.id === draggedId);
     const targetIndex = categories.findIndex(c => c.id === targetId);
@@ -820,6 +852,7 @@ const showTasksPage = () => {
     
     // Update FAB
     document.getElementById('addCategoryBtn').style.display = 'flex';
+    document.getElementById('addTaskBtn').style.display = 'none';
 };
 
 const showHabitsPage = () => {
@@ -833,6 +866,7 @@ const showHabitsPage = () => {
     
     // Update FAB
     document.getElementById('addCategoryBtn').style.display = 'none';
+    document.getElementById('addTaskBtn').style.display = 'none';
     
     // Load habits
     loadHabits();
@@ -909,7 +943,10 @@ const loadHabits = async () => {
                                     ondragstart="handleHabitDragStart(event, '${habit.id}')" 
                                     ondragover="handleHabitDragOver(event)" 
                                     ondrop="handleHabitDrop(event, '${habit.id}')" 
-                                    ondragend="handleHabitDragEnd(event)">
+                                    ondragend="handleHabitDragEnd(event)"
+                                    ontouchstart="handleTouchStart(event, 'habit')"
+                                    ontouchmove="handleTouchMove(event)"
+                                    ontouchend="handleTouchEnd(event)">
                                     <td class="habit-cell px-4 py-4">
                                         <div class="flex items-center space-x-3">
                                             <div class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 cursor-move hover:bg-gray-100 transition-colors" title="Sürükle">
@@ -1444,6 +1481,9 @@ const handleTouchStart = (e, type) => {
     } else if (type === 'task') {
         draggedElement = e.target.closest('[data-task-id]');
         draggedTaskId = draggedElement.dataset.taskId;
+    } else if (type === 'habit') {
+        draggedElement = e.target.closest('.habit-row');
+        draggedHabitId = draggedElement.dataset.habitId;
     }
     
     // Prevent default to avoid scrolling
@@ -1464,6 +1504,15 @@ const handleTouchMove = (e) => {
         draggedElement.style.opacity = '0.7';
         draggedElement.style.transform = 'scale(0.95)';
         draggedElement.style.zIndex = '1000';
+        
+        // Add dragging class for better visual feedback
+        if (touchDragType === 'category') {
+            draggedElement.classList.add('dragging');
+        } else if (touchDragType === 'task') {
+            draggedElement.classList.add('dragging');
+        } else if (touchDragType === 'habit') {
+            draggedElement.classList.add('dragging');
+        }
         
         // Add visual feedback class
         document.body.classList.add('is-dragging');
@@ -1499,6 +1548,16 @@ const handleTouchMove = (e) => {
             if (targetContainer) {
                 targetContainer.classList.add('drop-zone-active');
             }
+        } else if (touchDragType === 'habit') {
+            // Highlight drop zones for habits
+            document.querySelectorAll('.habit-row').forEach(row => {
+                row.style.borderLeft = '';
+            });
+            
+            const targetRow = elementBelow?.closest('.habit-row');
+            if (targetRow && targetRow !== draggedElement) {
+                targetRow.style.borderLeft = '3px solid #3B82F6';
+            }
         }
     }
     
@@ -1530,6 +1589,15 @@ const handleTouchEnd = async (e) => {
                 await moveTaskToCategory(draggedTaskId, newCategoryId);
                 showToast('Görev taşındı', 'success');
             }
+        } else if (touchDragType === 'habit') {
+            const targetRow = elementBelow?.closest('.habit-row');
+            if (targetRow && draggedHabitId) {
+                const targetHabitId = targetRow.dataset.habitId;
+                if (draggedHabitId !== targetHabitId) {
+                    await reorderHabits(draggedHabitId, targetHabitId);
+                    showToast('Alışkanlık sıralaması güncellendi', 'success');
+                }
+            }
         }
     } catch (error) {
         showToast('İşlem tamamlanamadı', 'error');
@@ -1556,6 +1624,9 @@ const resetTouchDrag = () => {
     document.querySelectorAll('[id^="tasks-"]').forEach(container => {
         container.classList.remove('drop-zone-active');
     });
+    document.querySelectorAll('.habit-row').forEach(row => {
+        row.style.borderLeft = '';
+    });
     document.body.classList.remove('is-dragging');
     
     // Reset state
@@ -1563,6 +1634,7 @@ const resetTouchDrag = () => {
     draggedElement = null;
     draggedCategoryId = null;
     draggedTaskId = null;
+    draggedHabitId = null;
     touchDragType = null;
 };
 
