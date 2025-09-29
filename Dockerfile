@@ -13,8 +13,6 @@ COPY ["Zentry.Api/Zentry.Api.csproj", "Zentry.Api/"]
 COPY ["Zentry.Application/Zentry.Application.csproj", "Zentry.Application/"]
 COPY ["Zentry.Domain/Zentry.Domain.csproj", "Zentry.Domain/"]
 COPY ["Zentry.Infrastructure/Zentry.Infrastructure.csproj", "Zentry.Infrastructure/"]
-COPY ["Zentry.Modules.Tasks/Zentry.Modules.Tasks.csproj", "Zentry.Modules.Tasks/"]
-COPY ["Zentry.Modules.Notes/Zentry.Modules.Notes.csproj", "Zentry.Modules.Notes/"]
 
 RUN dotnet restore "Zentry.Api/Zentry.Api.csproj"
 
